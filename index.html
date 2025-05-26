@@ -11,12 +11,7 @@
     body { font-family: sans-serif; padding: 1rem; }
     #controls { margin-bottom: 1rem; }
     video, canvas { border: 1px solid #ccc; }
-    #gridDisplay {
-      margin-top: 1rem;
-      display: grid;
-      grid-template-columns: repeat(5, 40px);
-      grid-gap: 2px;
-    }
+    #gridDisplay { margin-top: 1rem; display: grid; grid-template-columns: repeat(5, 40px); grid-gap: 2px; }
     .cell { width: 40px; height: 40px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
     .ball { width: 20px; height: 20px; background: blue; border-radius: 50%; }
   </style>
@@ -33,13 +28,14 @@
   </div>
   <div id="gridDisplay"></div>
 
-  <!-- OpenCV.js laden mit onload Callback -->
-  <script src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
+  <!-- OpenCV.js laden -->
+  <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script>
-    function onOpenCvReady() {
-      console.log('OpenCV.js verfügbar');
+    // Warten, bis OpenCV-WASM vollständig initialisiert ist
+    cv['onRuntimeInitialized'] = () => {
+      console.log('OpenCV.js ist geladen und initialisiert.');
       init();
-    }
+    };
 
     async function init() {
       await enumerateDevices();
@@ -99,8 +95,7 @@
       cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
       const low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [100, 150, 50, 0]);
       const high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [140, 255, 255, 255]);
-      const mask = new cv.Mat();
-      cv.inRange(hsv, low, high, mask);
+      const mask = new cv.Mat(); cv.inRange(hsv, low, high, mask);
       const contours = new cv.MatVector();
       const hierarchy = new cv.Mat();
       cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
@@ -108,26 +103,22 @@
       // Grid leeren
       document.querySelectorAll('#gridDisplay .cell').forEach(c => c.innerHTML = '');
 
-      // Positionen markieren
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
-        const cx = rect.x + rect.width / 2;
-        const cy = rect.y + rect.height / 2;
+        const cx = rect.x + rect.width/2;
+        const cy = rect.y + rect.height/2;
         cv.circle(dst, new cv.Point(cx, cy), 10, [255, 0, 0, 255], 2);
         const col = Math.min(Math.floor(cx / (dst.cols / GRID_COLS)), GRID_COLS - 1);
         const row = Math.min(Math.floor(cy / (dst.rows / GRID_ROWS)), GRID_ROWS - 1);
         const cellDiv = document.getElementById('gridDisplay').children[row * GRID_COLS + col];
         if (cellDiv) {
-          const ball = document.createElement('div');
-          ball.className = 'ball';
-          cellDiv.appendChild(ball);
+          const ball = document.createElement('div'); ball.className = 'ball'; cellDiv.appendChild(ball);
         }
         cnt.delete();
       }
-
       cv.imshow('overlay', dst);
-      // Cleanup
+      // Aufräumen
       src.delete(); dst.delete(); hsv.delete(); low.delete(); high.delete(); mask.delete(); contours.delete(); hierarchy.delete();
       requestAnimationFrame(processFrame);
     }
