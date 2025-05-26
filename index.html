@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Grid- und Kugelerkennung</title>
+  <title>Grid- und Kugelerkennung (Debug)</title>
   <!-- Leerer Favicon-Tag, um 404-Fehler zu vermeiden -->
   <link rel="icon" href="data:;base64,iVBORw0KGgo=">
   <style>
@@ -31,27 +31,35 @@
   <!-- OpenCV.js laden -->
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script>
-    // Warten, bis OpenCV-WASM vollständig initialisiert ist
+    console.log('Script geladen, warte auf OpenCV');
     cv['onRuntimeInitialized'] = () => {
-      console.log('OpenCV.js ist geladen und initialisiert.');
+      console.log('OpenCV bereit');
       init();
     };
 
     async function init() {
+      console.log('Init aufgerufen');
       await enumerateDevices();
       initGridDisplay();
       document.getElementById('startBtn').addEventListener('click', startCamera);
     }
 
     async function enumerateDevices() {
+      console.log('Ermittle Devices...');
       const deviceSelect = document.getElementById('deviceSelect');
       const devices = await navigator.mediaDevices.enumerateDevices();
+      console.log('Gefundene Devices:', devices);
       deviceSelect.innerHTML = '';
-      devices.filter(d => d.kind === 'videoinput').forEach((d, i) => {
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      if (videoInputs.length === 0) {
+        console.warn('Keine Kamera gefunden!');
+      }
+      videoInputs.forEach((d, i) => {
         const opt = document.createElement('option');
         opt.value = d.deviceId;
         opt.text = d.label || `Camera ${i+1}`;
         deviceSelect.add(opt);
+        console.log(`Option hinzugefügt: ${opt.text}`);
       });
     }
 
@@ -62,14 +70,25 @@
     const GRID_ROWS = 5, GRID_COLS = 5;
 
     async function startCamera() {
+      console.log('StartCamera geklickt');
       if (stream) stream.getTracks().forEach(t => t.stop());
       const deviceId = document.getElementById('deviceSelect').value;
+      console.log('Verwende deviceId:', deviceId);
+      let constraints;
+      if (deviceId) {
+        constraints = { video: { deviceId: { exact: deviceId } } };
+      } else {
+        console.log('Kein deviceId, nutze default video:true');
+        constraints = { video: true };
+      }
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId } });
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Camera stream erhalten');
         video.srcObject = stream;
         requestAnimationFrame(processFrame);
       } catch (err) {
-        alert('Kamera konnte nicht gestartet werden: ' + err.message);
+        console.error('Fehler getUserMedia:', err);
+        alert('Kamera-Fehler: ' + err.message);
       }
     }
 
@@ -77,10 +96,9 @@
       const gridDisplay = document.getElementById('gridDisplay');
       gridDisplay.innerHTML = '';
       for (let i = 0; i < GRID_ROWS * GRID_COLS; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        gridDisplay.appendChild(cell);
+        const cell = document.createElement('div'); cell.className = 'cell'; gridDisplay.appendChild(cell);
       }
+      console.log('Grid-Display initialisiert');
     }
 
     function processFrame() {
@@ -88,6 +106,7 @@
       ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
       const src = cv.imread(overlay);
       const dst = src.clone();
+      console.log('Frame verarbeitet');
 
       // Farbsegmentierung Blau
       const hsv = new cv.Mat();
@@ -96,29 +115,25 @@
       const low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [100, 150, 50, 0]);
       const high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [140, 255, 255, 255]);
       const mask = new cv.Mat(); cv.inRange(hsv, low, high, mask);
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
+      const contours = new cv.MatVector(); const hierarchy = new cv.Mat();
       cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
 
-      // Grid leeren
       document.querySelectorAll('#gridDisplay .cell').forEach(c => c.innerHTML = '');
 
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
-        const cx = rect.x + rect.width/2;
-        const cy = rect.y + rect.height/2;
+        const cx = rect.x + rect.width / 2;
+        const cy = rect.y + rect.height / 2;
         cv.circle(dst, new cv.Point(cx, cy), 10, [255, 0, 0, 255], 2);
         const col = Math.min(Math.floor(cx / (dst.cols / GRID_COLS)), GRID_COLS - 1);
         const row = Math.min(Math.floor(cy / (dst.rows / GRID_ROWS)), GRID_ROWS - 1);
         const cellDiv = document.getElementById('gridDisplay').children[row * GRID_COLS + col];
-        if (cellDiv) {
-          const ball = document.createElement('div'); ball.className = 'ball'; cellDiv.appendChild(ball);
-        }
+        if (cellDiv) { const ball = document.createElement('div'); ball.className = 'ball'; cellDiv.appendChild(ball); }
         cnt.delete();
       }
+
       cv.imshow('overlay', dst);
-      // Aufräumen
       src.delete(); dst.delete(); hsv.delete(); low.delete(); high.delete(); mask.delete(); contours.delete(); hierarchy.delete();
       requestAnimationFrame(processFrame);
     }
