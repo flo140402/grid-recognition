@@ -5,17 +5,23 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Grid- und Kugelerkennung</title>
+  <!-- Leerer Favicon-Tag, um 404-Fehler zu vermeiden -->
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=">
   <style>
     body { font-family: sans-serif; padding: 1rem; }
     #controls { margin-bottom: 1rem; }
     video, canvas { border: 1px solid #ccc; }
-    #gridDisplay { margin-top: 1rem; display: grid; grid-template-columns: repeat(5, 40px); grid-gap: 2px; }
+    #gridDisplay {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: repeat(5, 40px);
+      grid-gap: 2px;
+    }
     .cell { width: 40px; height: 40px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
     .ball { width: 20px; height: 20px; background: blue; border-radius: 50%; }
   </style>
 </head>
 <body>
-  <!-- Diese Datei ist bereit für GitHub Pages: einfach als index.html hochladen, Pages aktivieren und unter HTTPS aufrufen. -->
   <div id="controls">
     <label for="deviceSelect">Kamera wählen:</label>
     <select id="deviceSelect"></select>
@@ -27,10 +33,13 @@
   </div>
   <div id="gridDisplay"></div>
 
-  <!-- OpenCV.js laden -->
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <!-- OpenCV.js laden mit onload Callback -->
+  <script src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
   <script>
-    cv['onRuntimeInitialized'] = () => { init(); };
+    function onOpenCvReady() {
+      console.log('OpenCV.js verfügbar');
+      init();
+    }
 
     async function init() {
       await enumerateDevices();
@@ -39,26 +48,26 @@
     }
 
     async function enumerateDevices() {
-      let deviceSelect = document.getElementById('deviceSelect');
-      let devices = await navigator.mediaDevices.enumerateDevices();
+      const deviceSelect = document.getElementById('deviceSelect');
+      const devices = await navigator.mediaDevices.enumerateDevices();
       deviceSelect.innerHTML = '';
       devices.filter(d => d.kind === 'videoinput').forEach((d, i) => {
-        let opt = document.createElement('option');
+        const opt = document.createElement('option');
         opt.value = d.deviceId;
         opt.text = d.label || `Camera ${i+1}`;
         deviceSelect.add(opt);
       });
     }
 
-    let video = document.getElementById('videoIn');
-    let overlay = document.getElementById('overlay');
-    let ctx = overlay.getContext('2d');
     let stream;
+    const video = document.getElementById('videoIn');
+    const overlay = document.getElementById('overlay');
+    const ctx = overlay.getContext('2d');
     const GRID_ROWS = 5, GRID_COLS = 5;
 
     async function startCamera() {
       if (stream) stream.getTracks().forEach(t => t.stop());
-      let deviceId = document.getElementById('deviceSelect').value;
+      const deviceId = document.getElementById('deviceSelect').value;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId } });
         video.srcObject = stream;
@@ -69,10 +78,10 @@
     }
 
     function initGridDisplay() {
-      let gridDisplay = document.getElementById('gridDisplay');
+      const gridDisplay = document.getElementById('gridDisplay');
       gridDisplay.innerHTML = '';
       for (let i = 0; i < GRID_ROWS * GRID_COLS; i++) {
-        let cell = document.createElement('div');
+        const cell = document.createElement('div');
         cell.className = 'cell';
         gridDisplay.appendChild(cell);
       }
@@ -81,32 +90,44 @@
     function processFrame() {
       if (!video.videoWidth) return requestAnimationFrame(processFrame);
       ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
-      let src = cv.imread(overlay), dst = src.clone();
+      const src = cv.imread(overlay);
+      const dst = src.clone();
 
-      let hsv = new cv.Mat();
+      // Farbsegmentierung Blau
+      const hsv = new cv.Mat();
       cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
       cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-      let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [100, 150, 50, 0]);
-      let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [140, 255, 255, 255]);
-      let mask = new cv.Mat(); cv.inRange(hsv, low, high, mask);
-      let contours = new cv.MatVector(), hierarchy = new cv.Mat();
+      const low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [100, 150, 50, 0]);
+      const high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [140, 255, 255, 255]);
+      const mask = new cv.Mat();
+      cv.inRange(hsv, low, high, mask);
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
       cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
 
+      // Grid leeren
       document.querySelectorAll('#gridDisplay .cell').forEach(c => c.innerHTML = '');
 
+      // Positionen markieren
       for (let i = 0; i < contours.size(); ++i) {
-        let cnt = contours.get(i);
-        let rect = cv.boundingRect(cnt);
-        let cx = rect.x + rect.width/2, cy = rect.y + rect.height/2;
+        const cnt = contours.get(i);
+        const rect = cv.boundingRect(cnt);
+        const cx = rect.x + rect.width / 2;
+        const cy = rect.y + rect.height / 2;
         cv.circle(dst, new cv.Point(cx, cy), 10, [255, 0, 0, 255], 2);
-        let col = Math.min(Math.floor(cx / (dst.cols/GRID_COLS)), GRID_COLS-1);
-        let row = Math.min(Math.floor(cy / (dst.rows/GRID_ROWS)), GRID_ROWS-1);
-        let cellDiv = document.getElementById('gridDisplay').children[row*GRID_COLS+col];
-        if (cellDiv) cellDiv.appendChild(Object.assign(document.createElement('div'), { className: 'ball' }));
+        const col = Math.min(Math.floor(cx / (dst.cols / GRID_COLS)), GRID_COLS - 1);
+        const row = Math.min(Math.floor(cy / (dst.rows / GRID_ROWS)), GRID_ROWS - 1);
+        const cellDiv = document.getElementById('gridDisplay').children[row * GRID_COLS + col];
+        if (cellDiv) {
+          const ball = document.createElement('div');
+          ball.className = 'ball';
+          cellDiv.appendChild(ball);
+        }
         cnt.delete();
       }
 
       cv.imshow('overlay', dst);
+      // Cleanup
       src.delete(); dst.delete(); hsv.delete(); low.delete(); high.delete(); mask.delete(); contours.delete(); hierarchy.delete();
       requestAnimationFrame(processFrame);
     }
