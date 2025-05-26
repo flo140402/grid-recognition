@@ -5,13 +5,12 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Grid- und Kugelerkennung (Debug)</title>
-  <!-- Leerer Favicon-Tag, um 404-Fehler zu vermeiden -->
   <link rel="icon" href="data:;base64,iVBORw0KGgo=">
   <style>
     body { font-family: sans-serif; padding: 1rem; }
     #controls { margin-bottom: 1rem; }
     video, canvas { border: 1px solid #ccc; }
-    #gridDisplay { margin-top: 1rem; display: grid; grid-template-columns: repeat(5, 40px); grid-gap: 2px; }
+    #gridDisplay { margin-top: 1rem; display: grid; grid-template-columns: repeat(5, 40px); gap: 2px; }
     .cell { width: 40px; height: 40px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
     .ball { width: 20px; height: 20px; background: blue; border-radius: 50%; }
   </style>
@@ -51,9 +50,6 @@
       console.log('Gefundene Devices:', devices);
       deviceSelect.innerHTML = '';
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
-      if (videoInputs.length === 0) {
-        console.warn('Keine Kamera gefunden!');
-      }
       videoInputs.forEach((d, i) => {
         const opt = document.createElement('option');
         opt.value = d.deviceId;
@@ -74,13 +70,7 @@
       if (stream) stream.getTracks().forEach(t => t.stop());
       const deviceId = document.getElementById('deviceSelect').value;
       console.log('Verwende deviceId:', deviceId);
-      let constraints;
-      if (deviceId) {
-        constraints = { video: { deviceId: { exact: deviceId } } };
-      } else {
-        console.log('Kein deviceId, nutze default video:true');
-        constraints = { video: true };
-      }
+      let constraints = deviceId ? { video: { deviceId: { exact: deviceId } } } : { video: true };
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         console.log('Camera stream erhalten');
@@ -103,10 +93,14 @@
 
     function processFrame() {
       if (!video.videoWidth) return requestAnimationFrame(processFrame);
+      // Video auf Canvas zeichnen
       ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
-      const src = cv.imread(overlay);
+
+      // Canvas-Pixel in Mat umwandeln
+      const imgData = ctx.getImageData(0, 0, overlay.width, overlay.height);
+      const src = cv.matFromImageData(imgData);
       const dst = src.clone();
-      console.log('Frame verarbeitet');
+      console.log('Frame als Mat geladen');
 
       // Farbsegmentierung Blau
       const hsv = new cv.Mat();
@@ -118,8 +112,10 @@
       const contours = new cv.MatVector(); const hierarchy = new cv.Mat();
       cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
 
+      // Grid leeren
       document.querySelectorAll('#gridDisplay .cell').forEach(c => c.innerHTML = '');
 
+      // Bälle markieren
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
@@ -133,7 +129,9 @@
         cnt.delete();
       }
 
+      // Ergebnis anzeigen
       cv.imshow('overlay', dst);
+      // Speicher freigeben
       src.delete(); dst.delete(); hsv.delete(); low.delete(); high.delete(); mask.delete(); contours.delete(); hierarchy.delete();
       requestAnimationFrame(processFrame);
     }
